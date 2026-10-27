@@ -40,6 +40,21 @@ public final class StatsUserService extends IStatsService.Stub {
         report.append("\nBu rapor gerçek masaüstü davranışının kapandığını doğrulamaz. read-only bayraklar shell yetkisiyle değiştirilemeyebilir.\n");
         return report.toString();
     }
+    @Override public String listUserApps(int userId)throws RemoteException {
+        try {
+            AppManagementPolicy.validateUser(userId,android.os.Binder.getCallingUid());
+            return String.join("\n",AppManagementPolicy.userPackages(AppShell.run(AppManagementPolicy.listCommand(userId))));
+        } catch(Exception e){throw new RemoteException("Uygulamalar listelenemedi: "+e.getMessage());}
+    }
+    @Override public boolean forceStopApp(String packageName,int userId)throws RemoteException {
+        try {
+            AppManagementPolicy.validateUser(userId,android.os.Binder.getCallingUid());
+            AppManagementPolicy.validatePackage(packageName);
+            java.util.Set<String> eligible=AppManagementPolicy.userPackages(AppShell.run(AppManagementPolicy.listCommand(userId)));
+            AppShell.run(AppManagementPolicy.stopCommand(packageName,userId,eligible));
+            return Boolean.TRUE.equals(AppManagementPolicy.stoppedForUser(AppShell.run(AppManagementPolicy.stateCommand(packageName)),userId));
+        } catch(Exception e){throw new RemoteException("Durdurma işlemi tamamlanamadı/doğrulanamadı: "+e.getMessage());}
+    }
     private static String command(String[] args) throws Exception {
         return command(args,false,6);
     }

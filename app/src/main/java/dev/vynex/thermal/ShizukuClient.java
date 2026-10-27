@@ -31,7 +31,7 @@ final class ShizukuClient {
     ShizukuClient(Context context,Runnable changed) {
         this.changed=changed;
         args=new Shizuku.UserServiceArgs(new ComponentName(context,StatsUserService.class))
-            .daemon(false).tag("thermal-stats").processNameSuffix("thermal_stats").version(4);
+            .daemon(false).tag("thermal-stats").processNameSuffix("thermal_stats").version(5);
         Shizuku.addBinderReceivedListenerSticky(received,main);
         Shizuku.addBinderDeadListener(died,main);
         Shizuku.addRequestPermissionResultListener(permission,main);
@@ -76,7 +76,7 @@ final class ShizukuClient {
         if(closed || !wanted || !foreground) {disconnect();return;}
         service=IStatsService.Stub.asInterface(binder);
         if(!isReady()) {disconnect();update("Shizuku servisi bağlantısı geçersiz");return;}
-        try {update("Bağlı • "+(Shizuku.getUid()==0?"root":"ADB/shell")+" • salt okunur");}
+        try {update("Bağlı • "+(Shizuku.getUid()==0?"root":"ADB/shell"));}
         catch(RuntimeException e){disable();}
     }
     private void disconnected() {
@@ -94,6 +94,8 @@ final class ShizukuClient {
     }
     String readDesktopSetting() throws Exception {return authorizedService().readDesktopSetting();}
     String desktopDiagnostics() throws Exception {return authorizedService().desktopDiagnostics();}
+    String listUserApps(int userId)throws Exception {return authorizedService().listUserApps(userId);}
+    boolean forceStopApp(String pkg,int userId)throws Exception {return authorizedService().forceStopApp(AppManagementPolicy.validatePackage(pkg),userId);}
     void writeDesktopSetting(String value) throws Exception {authorizedService().writeDesktopSetting(DesktopSetting.valid(value));}
     private IStatsService authorizedService() {
         IStatsService s=service;

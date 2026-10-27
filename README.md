@@ -1,8 +1,22 @@
-# Isı Dedektifi 1.2.1 — Android
+# Isı Dedektifi 1.3.0 — Android
 
 [Türkçe APK'yı indir](https://github.com/Thevynex/Deneme/raw/refs/heads/main/downloads/Isi-Dedektifi.apk) · Android 8.0+
 
 Pil sıcaklığı, sistem RAM'i, Android termal baskı durumu, pil akımı/gerilimi, depolama ve kullanım erişimiyle yaklaşık ön plan kullanım geçmişi. Reklam ve analiz SDK'sı yoktur.
+
+## 1.3: Seçtiğin uygulamayı yönet ve RAM farkını ölç
+
+1. **Süreçler → Shizuku ile yetkilendir ve ölç** ile bağlantıyı kur.
+2. **Uygulamalar → Shizuku ile uygulamaları listele / yenile** düğmesine dokun.
+3. İsim veya paket adıyla ara, yönetilecek uygulamayı seç.
+4. **Zorla durdur ve RAM farkını ölç** seçilen paketi Android `am force-stop` ile durdurur. İşlem öncesi ve yaklaşık 1,5 saniye sonrası kullanılabilir sistem RAM'i gösterilir. Son durum `dumpsys package` içindeki ilgili profilin `stopped` durumu ile kontrol edilir; okunamayan durum başarı olarak gösterilmez.
+5. **Kaldırma ekranını aç** Android'in standart kaldırma onay ekranını açar; veri kaybına yol açabilen kaldırmayı kullanıcı burada onaylar. Sessiz kaldırma yapılmaz.
+
+Yalnızca uygulamanın çalıştığı Android profilindeki kurulu üçüncü taraf uygulamalar hedeflenir. Hedef listesi `pm list packages -3 --user <profil>` ile alınır ve durdurma öncesinde tekrar kontrol edilir. Sistem uygulamaları, Isı Dedektifi ve Shizuku yönetim listesinden çıkarılır. Paket adı ve Binder çağıran UID/profil sınırı serviste doğrulanır; genel amaçlı komut çalıştırma arayüzü yoktur. Paket bilgileri Android görünürlük sınırına takılırsa paket adı gösterilir.
+
+Zorla durdurma kaydedilmemiş işleri, bildirimleri ve arka plan görevlerini etkileyebilir; kullanıcı uygulamayı tekrar açana kadar bunlar durabilir. Her durdurma, seçilen paket adı gösterilerek kullanıcı tarafından başlatılır. RAM artışı garanti edilmez: sistemin önbellek kullanımı normaldir ve diğer uygulamalar da ölçüm farkını etkiler. Toplu RAM temizliği yapılmaz. Pil tasarrufu ve Android pil kullanım ayarları için kısayollar eklenmiştir.
+
+Bu uygulama asistana telefonuna uzaktan erişim sağlamaz. İşlemler cihaz üzerinde kullanıcı seçimiyle başlatılır; uygulama listesi veya ölçümler sunucuya gönderilmez. Gerçek telefonda kaldırma/force-stop ve RAM değişimi burada doğrulanmadı.
 
 ## Shizuku ile root olmadan süreç ölçümü
 
@@ -43,7 +57,7 @@ Tanılama cihaz modelini ve Android sürümünü içerir; seri numarası, IMEI v
 - Binder yanıtı boyut sınırına ulaşılırsa süreç listesi eksik olarak işaretlenir. Ekranda sıralanmış ilk 80 süreç, paylaşım raporunda yakalanan tüm süreçler bulunur.
 - Kullanım geçmişi olay kayıtlarından yaklaşık ön plan süresidir; CPU/RAM ölçümü veya ısınma nedeni değildir. Çoklu pencere ve üretici kayıt politikası etkileyebilir. Dakikada bir yenilenir; arka plan işleri burada ölçülmez.
 
-Canlı ölçümler yalnızca ön planda, 5 saniyelik aralıklarla alınır. Süreç öldürme, otomatik RAM temizliği, sessiz güncelleme veya otomatik yeniden başlatma yoktur. Paylaşım raporu cihaz modelini ve uygulama/süreç adlarını içerebilir; Android paylaşım ekranından kullanıcı gönderir.
+Canlı ölçümler yalnızca ön planda, 5 saniyelik aralıklarla alınır. Kullanıcı seçimi dışında süreç durdurma, otomatik RAM temizliği, sessiz güncelleme veya otomatik yeniden başlatma yoktur. Paylaşım raporu cihaz modelini ve uygulama/süreç adlarını içerebilir; Android paylaşım ekranından kullanıcı gönderir.
 
 ## Derleme ve doğrulama
 
@@ -57,4 +71,4 @@ gradle :app:lintDebug :app:assembleDebug
 
 Çıktı: `app/build/outputs/apk/debug/app-debug.apk`. Yönetilen bulut proxy/CA ayarları gerekiyorsa `python3 scripts/network-run.py <komut>` kullanılabilir. GitHub Actions aynı test/lint/APK adımlarını çalıştırır; sonuç **Artifacts → Isi-Dedektifi-APK** bölümündedir.
 
-68 kontrol: CPU/RSS ayrıştırma, PID tekrar kullanımı, 16K sayfalar, kısıtlı dosya erişimi, Binder çıktı sınırı, masaüstü ayarı komut sınırları, APK hash/paket/sürüm/imza politikaları ve salt okunur masaüstü tanılaması. Derleme ve lint çalıştırılmıştır. Gerçek telefonda Shizuku izin/bağlantı yaşam döngüsü, Android kurulum ekranı ve Samsung masaüstü etkisi henüz doğrulanmamıştır.
+100 kontrol: CPU/RSS ayrıştırma, PID tekrar kullanımı, 16K sayfalar, kısıtlı dosya erişimi, Binder çıktı sınırı, masaüstü ayarı komut sınırları, APK hash/paket/sürüm/imza politikaları salt okunur masaüstü tanılaması, tam paket hedefleme, profil izolasyonu, durdurma durumu ve sınırlı komut çıktısı. Derleme ve lint çalıştırılmıştır. Gerçek telefonda Shizuku izin/bağlantı yaşam döngüsü, Android kurulum ekranı ve Samsung masaüstü etkisi henüz doğrulanmamıştır.

@@ -25,9 +25,13 @@ public class MainActivity extends Activity {
     private LinearLayout body, tabBar;
     private ScrollView scroll;
     private boolean active, busy, rootEnabled, rootFirst, sortRam;
+    private boolean manageApps=true;
     private int tab;
     private String rootState = "Kapalı • isteğe bağlı", error = "";
-    private String updateStatus="Sürüm 1.2.1 • Güncellemeler GitHub'dan indirilir", desktopStatus="Henüz okunmadı", desktopReport="";
+    private String updateStatus="Sürüm 1.3.0 • Güncellemeler GitHub'dan indirilir", desktopStatus="Henüz okunmadı", desktopReport="";
+    private String managementStatus="Yönetilecek uygulamayı sen seçersin. Telefonuna uzaktan bağlantı açılmaz.";
+    private List<ManagedApp> managedApps=new ArrayList<>();
+    private ManagedApp selectedApp;
     private ProcSnapshot previous;
     private ShizukuClient shizuku;
     private int measurementEpoch, previousEpoch=-1;
@@ -35,6 +39,11 @@ public class MainActivity extends Activity {
     private long usageUpdated;
     private State state = new State();
     private final Runnable poll = () -> refresh(false);
+    private static class ManagedApp {
+        final String pkg,label;
+        ManagedApp(String pkg,String label){this.pkg=pkg;this.label=label;}
+        @Override public String toString(){return label+"\n"+pkg;}
+    }
     private static class AppUse {
         String pkg, label; long ms, last;
         AppUse(String pkg, String label, long ms, long last) { this.pkg=pkg; this.label=label; this.ms=ms; this.last=last; }
@@ -239,6 +248,8 @@ public class MainActivity extends Activity {
         }
     }
     private void apps() {
+        body.addView(button(manageApps?"Kullanım geçmişine geç":"Uygulama yönetimine geç",()->{manageApps=!manageApps;render();}));
+        if(manageApps){appManagement();return;}
         LinearLayout intro=card("SON 24 SAAT · ÖN PLAN KULLANIMI");
         intro.addView(text("Kullanım süresi, CPU/RAM tüketimi veya ısınmanın nedeni değildir. Canlı süreç verileri için Süreçler sekmesinde Shizuku veya root yetkisi ver. Arka plan işleri bu kullanım listesinde ölçülmez.",14,MUTED));
         intro.addView(button(state.usageAccess?"Kullanım erişimini yönet":"Kullanım erişimine izin ver",()->open(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))));
@@ -250,6 +261,97 @@ public class MainActivity extends Activity {
             c.addView(text(duration(app.ms),24,GREEN)); c.addView(text(app.pkg,12,MUTED));
             c.addView(button("Uygulama ayrıntıları",()->appInfo(app.pkg)));
         }
+    }
+    private void appManagement() {
+        LinearLayout intro=card("UYGULAMA YÖNETİMİ");
+        intro.addView(text(managementStatus,14,TEXT));
+        intro.addView(text("İndirdiğin uygulamalar Shizuku ile listelenir. Sistem uygulamaları, Isı Dedektifi ve Shizuku bu listede yönetilmez. Durdurma yalnızca seçilen uygulamaya uygulanır. Kaldırma, Android'in onay ekranını açar.",13,MUTED));
+        intro.addView(button("Shizuku ile uygulamaları listele / yenile",this::loadManagedApps));
+        if(!managedApps.isEmpty())intro.addView(button("Uygulama seç / ara ("+managedApps.size()+")",this::chooseManagedApp));
+        if(selectedApp!=null) {
+            LinearLayout target=card("SEÇİLİ UYGULAMA");
+            target.addView(text(selectedApp.label,23,GREEN));target.addView(text(selectedApp.pkg,13,MUTED));
+            target.addView(button("Zorla durdur ve RAM farkını ölç",()->{
+                ManagedApp selected=selectedApp;
+                new AlertDialog.Builder(this).setTitle(selected.label+" durdurulsun mu?")
+                    .setMessage(selected.pkg+"\n\nKaydedilmemiş işler kaybolabilir; bildirimler ve arka plan işleri uygulamayı tekrar açana kadar durabilir. Kullanılabilir RAM farkı ölçülecek; RAM artışı garanti edilmez.")
+                    .setNegativeButton("Vazgeç",null).setPositiveButton("Bu uygulamayı durdur",(d,w)->stopManagedApp(selected)).show();
+            }));
+            target.addView(button("Kaldırma ekranını aç",()->{
+                try{AppManagementPolicy.validatePackage(selectedApp.pkg);open(new Intent(Intent.ACTION_DELETE,Uri.parse("package:"+selectedApp.pkg)));}
+                catch(IOException e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
+            }));
+            target.addView(button("Android uygulama ayarlarını aç",()->appInfo(selectedApp.pkg)));
+        }
+        LinearLayout memory=card("RAM VE TELEFON DURUMU");
+        memory.addView(text("Kullanılabilir RAM: "+bytes(state.availableRam),23,GREEN));
+        memory.addView(text(state.lowMemory?"Android düşük bellek baskısı bildiriyor.":"Android düşük bellek baskısı bildirmiyor. Önbelleklerin RAM kullanması normaldir.",14,TEXT));
+        memory.addView(text("Toplu durdurma veya sahte RAM temizleme yapılmaz. Bir uygulama yeniden açılabilir; sistemdeki RAM değişiminin tamamı seçilen işleme bağlanamaz. Isınma sürerse Genel sekmesindeki sıcaklığı ve Süreçler sekmesindeki CPU'yu incele.",13,MUTED));
+        memory.addView(button("Pil tasarrufu ayarlarını aç",()->open(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))));
+        memory.addView(button("Android pil tüketimini aç",()->open(new Intent(Intent.ACTION_POWER_USAGE_SUMMARY))));
+    }
+    private void loadManagedApps() {
+        if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+        if(!shizuku.isReady()){managementStatus="Önce Süreçler → Shizuku ile yetkilendir ve ölç";render();return;}
+        busy=true;handler.removeCallbacks(poll);managementStatus="Kullanıcı uygulamaları okunuyor…";render();
+        worker.execute(()->{
+            List<ManagedApp> apps=new ArrayList<>();String message;
+            try {
+                for(String pkg:shizuku.listUserApps(android.os.Process.myUid()/100000).split("\\R")) {
+                    if(pkg.isEmpty())continue;AppManagementPolicy.validatePackage(pkg);apps.add(new ManagedApp(pkg,label(pkg)));
+                }
+                apps.sort((a,b)->a.label.compareToIgnoreCase(b.label));message=apps.size()+" kullanıcı uygulaması bulundu. Birini seçebilirsin.";
+            } catch(Exception e){message="Liste alınamadı: "+e.getMessage();}
+            List<ManagedApp> result=apps;String status=message;
+            handler.post(()->{
+                busy=false;if(isDestroyed())return;managedApps=result;managementStatus=status;
+                if(selectedApp!=null && managedApps.stream().noneMatch(a->a.pkg.equals(selectedApp.pkg)))selectedApp=null;
+                render();if(active){if(!managedApps.isEmpty())chooseManagedApp();handler.postDelayed(poll,5000);}
+            });
+        });
+    }
+    private void chooseManagedApp() {
+        LinearLayout content=column();content.setPadding(dp(16),0,dp(16),0);
+        EditText search=new EditText(this);search.setSingleLine(true);search.setHint("Uygulama veya paket adı ara");content.addView(search);
+        ListView list=new ListView(this);
+        List<ManagedApp> choices=new ArrayList<>(managedApps);
+        ArrayAdapter<ManagedApp> adapter=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,new ArrayList<>(choices));list.setAdapter(adapter);
+        content.addView(list,new LinearLayout.LayoutParams(-1,dp(330)));
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Yönetilecek uygulamayı seç").setView(content).setNegativeButton("Vazgeç",null).create();
+        search.addTextChangedListener(new android.text.TextWatcher(){
+            @Override public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            @Override public void onTextChanged(CharSequence s,int start,int before,int count){
+                String query=s.toString().trim().toLowerCase(Locale.ROOT);
+                adapter.setNotifyOnChange(false);adapter.clear();
+                for(ManagedApp app:choices)if(app.label.toLowerCase(Locale.ROOT).contains(query) || app.pkg.toLowerCase(Locale.ROOT).contains(query))adapter.add(app);
+                adapter.notifyDataSetChanged();
+            }
+            @Override public void afterTextChanged(android.text.Editable e){}
+        });
+        list.setOnItemClickListener((parent,view,position,id)->{selectedApp=adapter.getItem(position);dialog.dismiss();render();});
+        dialog.show();
+    }
+    private long availableRam() {
+        ActivityManager.MemoryInfo memory=new ActivityManager.MemoryInfo();
+        ((ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(memory);return memory.availMem;
+    }
+    private void stopManagedApp(ManagedApp selected) {
+        if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+        if(!shizuku.isReady()){managementStatus="Önce Shizuku ile yetkilendir";render();return;}
+        busy=true;handler.removeCallbacks(poll);long before=availableRam();managementStatus=selected.label+" durduruluyor…";render();
+        worker.execute(()->{
+            String message;
+            try {
+                boolean confirmed=shizuku.forceStopApp(selected.pkg,android.os.Process.myUid()/100000);
+                message=selected.label+(confirmed?": Android uygulamayı durdurulmuş olarak bildiriyor.":": Durdurma istendi; son durum doğrulanamadı.");
+            } catch(Exception e){message="Durdurma tamamlanamadı/doğrulanamadı: "+e.getMessage();}
+            String result=message;
+            handler.postDelayed(()->{
+                busy=false;if(isDestroyed())return;long after=availableRam();
+                managementStatus=result+"\nKullanılabilir RAM önce: "+bytes(before)+"\nSonra: "+bytes(after)+"\nFark: "+String.format(Locale.ROOT,"%+.1f MiB",(after-before)/(1024.0*1024))+"\nBu sistem genelindeki farktır; diğer işlemler de etkiler.";
+                render();if(active)refresh(false);
+            },1500);
+        });
     }
     private void processes() {
         LinearLayout intro=card("CANLI CPU / RAM · SHIZUKU VEYA ROOT");
@@ -291,7 +393,7 @@ public class MainActivity extends Activity {
         body.addView(button("Tüm süreçleri raporla paylaş",this::share));
     }
     private void share() {
-        StringBuilder s=new StringBuilder("Isı Dedektifi 1.2.1\n");
+        StringBuilder s=new StringBuilder("Isı Dedektifi 1.3.0\n");
         s.append("Cihaz: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(" · Android ").append(Build.VERSION.RELEASE).append('\n');
         s.append("Ölçüm: ").append(new Date(state.time)).append('\n');
         s.append("Pil sıcaklığı (CPU değil): ").append(Float.isFinite(state.temp)?state.temp+" °C":"erişilemiyor").append('\n');
@@ -389,7 +491,7 @@ public class MainActivity extends Activity {
         busy=true;handler.removeCallbacks(poll);desktopStatus="Tanılama okunuyor • hiçbir ayar değiştirilmiyor…";render();
         worker.execute(()->{
             String report;
-            try {report="Isı Dedektifi 1.2.1\nCihaz: "+Build.MANUFACTURER+" "+Build.MODEL+"\nAndroid: "+Build.VERSION.RELEASE+" (SDK "+Build.VERSION.SDK_INT+")\n"+shizuku.desktopDiagnostics();}
+            try {report="Isı Dedektifi 1.3.0\nCihaz: "+Build.MANUFACTURER+" "+Build.MODEL+"\nAndroid: "+Build.VERSION.RELEASE+" (SDK "+Build.VERSION.SDK_INT+")\n"+shizuku.desktopDiagnostics();}
             catch(Exception e){report="Tanılama alınamadı: "+e.getMessage();}
             String result=report;
             handler.post(()->{
