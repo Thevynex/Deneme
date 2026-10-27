@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
     private boolean active, busy, rootEnabled, rootFirst, sortRam;
     private int tab;
     private String rootState = "Kapalı • isteğe bağlı", error = "";
-    private String updateStatus="Sürüm 1.2.0 • Güncellemeler GitHub'dan indirilir", desktopStatus="Henüz okunmadı";
+    private String updateStatus="Sürüm 1.2.1 • Güncellemeler GitHub'dan indirilir", desktopStatus="Henüz okunmadı", desktopReport="";
     private ProcSnapshot previous;
     private ShizukuClient shizuku;
     private int measurementEpoch, previousEpoch=-1;
@@ -291,7 +291,7 @@ public class MainActivity extends Activity {
         body.addView(button("Tüm süreçleri raporla paylaş",this::share));
     }
     private void share() {
-        StringBuilder s=new StringBuilder("Isı Dedektifi 1.2\n");
+        StringBuilder s=new StringBuilder("Isı Dedektifi 1.2.1\n");
         s.append("Cihaz: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(" · Android ").append(Build.VERSION.RELEASE).append('\n');
         s.append("Ölçüm: ").append(new Date(state.time)).append('\n');
         s.append("Pil sıcaklığı (CPU değil): ").append(Float.isFinite(state.temp)?state.temp+" °C":"erişilemiyor").append('\n');
@@ -316,13 +316,21 @@ public class MainActivity extends Activity {
         update.addView(button("APK yükleme iznini aç",()->open(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+getPackageName())))));
         LinearLayout desktop=card("ANDROID 16 · MASAÜSTÜ DENEYİMİ");
         desktop.addView(text(desktopStatus,14,GREEN));
-        desktop.addView(text("Enable desktop experience features seçeneğinin AOSP karşılığı: global "+DesktopSetting.KEY+". 0: kapalı, 1: açık, -1/atanmamış: varsayılan. Samsung bunu ayrıca kilitleyebilir. Ayarın yazılması gerçek masaüstü davranışının kapandığını tek başına kanıtlamaz; yeniden başlatıp sistem ayarından kontrol et.",13,MUTED));
+        desktop.addView(text("AOSP geliştirici ayarı: global "+DesktopSetting.KEY+". 1: açmaya zorla; 0: açma zorlamasını kaldır. 0, sistemin varsayılan masaüstü özelliklerini kapatmayabilir. Samsung'daki gri anahtar için gerçek sistem özelliği ve aconfig bayrakları da incelenmelidir.",13,MUTED));
         desktop.addView(text("Shizuku ile yetkilendirmek için Süreçler sekmesini kullan. Değişiklik yalnızca bu ayara uygulanır; yeniden başlatma otomatik yapılmaz.",13,MUTED));
         desktop.addView(button("Mevcut değeri oku",()->desktopAction(0)));
-        desktop.addView(button("Shizuku ile masaüstü deneyimini kapat",()->new AlertDialog.Builder(this)
-            .setTitle("Masaüstü deneyimini kapat")
-            .setMessage("Mevcut değer yedeklenecek ve yalnızca masaüstü deneyimi ayarına 0 yazılacak. Harici ekran/pencere davranışı etkilenebilir. Sonrasında telefonu kendin yeniden başlatıp sonucu kontrol et.")
-            .setNegativeButton("Vazgeç",null).setPositiveButton("Kapat",(d,w)->desktopAction(1)).show()));
+        desktop.addView(button("Masaüstü tanılamasını oku (Shizuku)",this::readDesktopDiagnostics));
+        if(!desktopReport.isEmpty()) {
+            desktop.addView(button("Tanılama raporunu kopyala",()->{
+                ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Masaüstü tanılaması",desktopReport));
+                Toast.makeText(this,"Tanılama kopyalandı",Toast.LENGTH_SHORT).show();
+            }));
+            desktop.addView(text(desktopReport,12,MUTED));
+        }
+        desktop.addView(button("AOSP masaüstü açma zorlamasını kaldır",()->new AlertDialog.Builder(this)
+            .setTitle("Açma zorlamasını kaldır")
+            .setMessage("Mevcut değer yedeklenecek ve yalnızca geliştirici ayarına 0 yazılacak. Bu işlem sistemin varsayılan masaüstü özelliklerini kapatmayabilir. Harici ekran/pencere davranışı etkilenebilir; yeniden başlatma gerekebilir.")
+            .setNegativeButton("Vazgeç",null).setPositiveButton("0 yaz",(d,w)->desktopAction(1)).show()));
         if(getSharedPreferences("desktop",MODE_PRIVATE).contains("original"))desktop.addView(button("Yedeklenen eski değeri geri yükle",()->new AlertDialog.Builder(this)
             .setTitle("Eski değeri geri yükle").setMessage("Bu uygulamayla yapılan ilk kapatma işleminden önceki değer geri yüklenecek. Yeniden başlatma gerekebilir.")
             .setNegativeButton("Vazgeç",null).setPositiveButton("Geri yükle",(d,w)->desktopAction(2)).show()));
@@ -369,10 +377,25 @@ public class MainActivity extends Activity {
                     prefs.edit().remove("original").commit();
                 }
                 String after=shizuku.readDesktopSetting();
-                result="Okunan değer: "+after+(action!=0?" • Değer yazıldı ve geri okundu. Telefonu yeniden başlatıp seçeneği kontrol et.":" • Yalnızca okundu; değişiklik yapılmadı.");
+                result="Okunan ayar değeri: "+after+(action!=0?" • Ayar yazıldı ve geri okundu; gerçek masaüstü durumu doğrulanmadı.":" • Yalnızca okundu; değişiklik yapılmadı.");
             } catch(Exception e){result="İşlem doğrulanamadı: "+e.getMessage();}
             String message=result;
             handler.post(()->{busy=false;if(isDestroyed())return;desktopStatus=message;render();if(active)handler.postDelayed(poll,5000);});
+        });
+    }
+    private void readDesktopDiagnostics() {
+        if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+        if(!shizuku.isReady()){desktopStatus="Önce Süreçler → Shizuku ile yetkilendir ve ölç";render();return;}
+        busy=true;handler.removeCallbacks(poll);desktopStatus="Tanılama okunuyor • hiçbir ayar değiştirilmiyor…";render();
+        worker.execute(()->{
+            String report;
+            try {report="Isı Dedektifi 1.2.1\nCihaz: "+Build.MANUFACTURER+" "+Build.MODEL+"\nAndroid: "+Build.VERSION.RELEASE+" (SDK "+Build.VERSION.SDK_INT+")\n"+shizuku.desktopDiagnostics();}
+            catch(Exception e){report="Tanılama alınamadı: "+e.getMessage();}
+            String result=report;
+            handler.post(()->{
+                busy=false;if(isDestroyed())return;desktopReport=result;desktopStatus="Tanılama sonucu aşağıda • ayar değiştirilmedi";render();
+                if(active)handler.postDelayed(poll,5000);
+            });
         });
     }
     private void clearProcessValues() {state.processes=new ArrayList<>();state.sensors=new ArrayList<>();state.cpu=null;state.source="Standart";state.coverage="";}

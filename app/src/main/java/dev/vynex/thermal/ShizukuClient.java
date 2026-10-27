@@ -31,7 +31,7 @@ final class ShizukuClient {
     ShizukuClient(Context context,Runnable changed) {
         this.changed=changed;
         args=new Shizuku.UserServiceArgs(new ComponentName(context,StatsUserService.class))
-            .daemon(false).tag("thermal-stats").processNameSuffix("thermal_stats").version(3);
+            .daemon(false).tag("thermal-stats").processNameSuffix("thermal_stats").version(4);
         Shizuku.addBinderReceivedListenerSticky(received,main);
         Shizuku.addBinderDeadListener(died,main);
         Shizuku.addRequestPermissionResultListener(permission,main);
@@ -93,6 +93,7 @@ final class ShizukuClient {
         } catch(Exception e) {failed(s);throw e;}
     }
     String readDesktopSetting() throws Exception {return authorizedService().readDesktopSetting();}
+    String desktopDiagnostics() throws Exception {return authorizedService().desktopDiagnostics();}
     void writeDesktopSetting(String value) throws Exception {authorizedService().writeDesktopSetting(DesktopSetting.valid(value));}
     private IStatsService authorizedService() {
         IStatsService s=service;

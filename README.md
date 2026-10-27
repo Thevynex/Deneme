@@ -1,4 +1,4 @@
-# Isı Dedektifi 1.2 — Android
+# Isı Dedektifi 1.2.1 — Android
 
 [Türkçe APK'yı indir](https://github.com/Thevynex/Deneme/raw/refs/heads/main/downloads/Isi-Dedektifi.apk) · Android 8.0+
 
@@ -26,6 +26,14 @@ Ekrandaki **Enable desktop experience features** için AOSP Android 16 karşıl�
 
 Yeniden başlatma otomatik yapılmaz. Samsung One UI 8.5 üretici politikası/özellik bayrakları bu seçeneği ayrıca kilitleyebilir. Ayarın `0` olması gerçek pencere davranışının kapandığını tek başına kanıtlamaz; yeniden başlatıp geliştirici seçeneklerinden ve harici ekran davranışından kontrol edilmelidir. Bu seçeneğin telefonun ısınmasına neden olduğu doğrulanmış değildir. [Araştırma, komutlar ve kaynaklar](DESKTOP-MODE.md).
 
+## 1.2.1: Masaüstü tanılaması
+
+Samsung cihazında ayar `0` ve yeniden başlatma sonrasında seçeneğin açık kaldığı bildirildi. AOSP'de masaüstü deneyimi yolu `OVERRIDE_OFF` için derleme varsayılanını kullanabilir; `0` her masaüstü özelliğini zorla kapatmaz. Geliştirici ayarının veritabanındaki değeri, görsel anahtar ve gerçek pencere özellikleri ayrı gözlemlerdir.
+
+**Araçlar → Masaüstü tanılamasını oku (Shizuku)** mevcut ayarı, WMS'nin kullandığı `persist.wm.debug.desktop_experience_devopts` özelliğini ve erişilebilen masaüstü aconfig bayraklarını okur. Eski alternatif ayarlar, derleme tipi ve shell/root servis UID'si de raporlanır. **Tanılama raporunu kopyala** düğmesi sonucu panoya alır; otomatik gönderim yapılmaz. Herhangi bir ayar, özellik veya bayrak değiştirilmez. Okunamayan/olmayan komutlar açıkça belirtilir; sonuç tüm bayrakların mevcut olduğunu garanti etmez. `read-only` bayraklar shell yetkisiyle değiştirilemeyebilir.
+
+Tanılama cihaz modelini ve Android sürümünü içerir; seri numarası, IMEI veya Android ID okunmaz. Araçtaki yazma düğmesi artık **AOSP masaüstü açma zorlamasını kaldır** olarak adlandırılır; gerçek masaüstü durumunun kapandığı iddia edilmez.
+
 ## Ölçümlerin anlamı ve sınırları
 
 - Pil sıcaklığı CPU sıcaklığı değildir. Root/Shizuku ile okunabilen termal sensörler üreticinin adlarıyla gösterilir; hepsi CPU'ya ait değildir.
@@ -49,4 +57,4 @@ gradle :app:lintDebug :app:assembleDebug
 
 Çıktı: `app/build/outputs/apk/debug/app-debug.apk`. Yönetilen bulut proxy/CA ayarları gerekiyorsa `python3 scripts/network-run.py <komut>` kullanılabilir. GitHub Actions aynı test/lint/APK adımlarını çalıştırır; sonuç **Artifacts → Isi-Dedektifi-APK** bölümündedir.
 
-46 kontrol: CPU/RSS ayrıştırma, PID tekrar kullanımı, 16K sayfalar, kısıtlı dosya erişimi, Binder çıktı sınırı, masaüstü ayarı komut sınırları, APK hash/paket/sürüm/imza politikaları. Derleme ve lint çalıştırılmıştır. Gerçek telefonda Shizuku izin/bağlantı yaşam döngüsü, Android kurulum ekranı ve Samsung masaüstü etkisi henüz doğrulanmamıştır.
+68 kontrol: CPU/RSS ayrıştırma, PID tekrar kullanımı, 16K sayfalar, kısıtlı dosya erişimi, Binder çıktı sınırı, masaüstü ayarı komut sınırları, APK hash/paket/sürüm/imza politikaları ve salt okunur masaüstü tanılaması. Derleme ve lint çalıştırılmıştır. Gerçek telefonda Shizuku izin/bağlantı yaşam döngüsü, Android kurulum ekranı ve Samsung masaüstü etkisi henüz doğrulanmamıştır.
