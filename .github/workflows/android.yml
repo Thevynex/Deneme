@@ -22,6 +22,15 @@ jobs:
         run: |
           set -o pipefail
           {
+            export ANDROID_HOME="$RUNNER_TEMP/thermal-android-sdk"
+            export ANDROID_SDK_ROOT="$ANDROID_HOME"
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            curl --fail --location --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip --output "$RUNNER_TEMP/android-tools.zip" &&
+            echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $RUNNER_TEMP/android-tools.zip" | sha256sum --check &&
+            unzip -q "$RUNNER_TEMP/android-tools.zip" -d "$ANDROID_HOME/cmdline-tools" &&
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" &&
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH" &&
+            printf 'y\n%.0s' {1..100} | sdkmanager --licenses > /dev/null &&
             sdkmanager 'platforms;android-35' 'build-tools;35.0.0' &&
             bash scripts/test.sh &&
             gradle --no-daemon :app:lintDebug :app:assembleDebug
