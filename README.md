@@ -1,38 +1,45 @@
-# Isı Dedektifi — Android
+# Isı Dedektifi 1.2 — Android
 
-Türkçe, reklamsız, internete veri göndermeyen telefon durum izleyicisi. Android 8.0+.
+[Türkçe APK'yı indir](https://github.com/Thevynex/Deneme/raw/refs/heads/main/downloads/Isi-Dedektifi.apk) · Android 8.0+
 
-- Pil sıcaklığı ve son 60 ölçümün grafiği. **Pil sıcaklığı CPU sıcaklığı değildir.**
-- Android termal baskı durumu (Android 10+ ve üretici desteği gerekir).
-- Sistem RAM'i, kullanılabilir bellek, düşük bellek uyarısı, depolama ve pil durumu.
-- Kullanım erişimi verilirse son 24 saatlik yaklaşık ön plan kullanım süreleri ve uygulama ayarlarına bağlantılar.
-- **İsteğe bağlı root** ile süreç bazında CPU, RAM (RSS), PID ve üreticinin termal sensörleri. CPU/RAM sıralaması; ilk 80 süreç ekranda, yakalanan tüm süreçler raporda.
-- Ölçüm raporunu Android paylaşım ekranından kullanıcı seçimiyle paylaşma.
+Pil sıcaklığı, sistem RAM'i, Android termal baskı durumu, pil akımı/gerilimi, depolama ve kullanım erişimiyle yaklaşık ön plan kullanım geçmişi. Reklam ve analiz SDK'sı yoktur.
 
-## Ölçümlerin sınırları
+## Shizuku ile root olmadan süreç ölçümü
 
-Modern Android, rootsuz bir uygulamanın diğer uygulamaların anlık CPU/RAM kullanımını okumasını engeller. Root yoksa bu alanlar erişilemiyor olarak gösterilir. Kullanım süresi CPU tüketimi değildir; uygulama otomatik olarak “ısınmanın suçlusu” ilan edilmez. Toplam CPU sayacı bazı rootsuz ROM'larda okunabilir, diğerlerinde root gerekir. CPU yüzdesi tüm çekirdeklerin toplam kapasitesine göre normalize edilir; ilk iki örnek arasındaki fark gerekir. Süreç RSS değerleri paylaşılan sayfaları tekrar sayabilir; PSS veya uygulama toplamı değildir. Süreç adı kernel tarafından kısaltılabilir. Root modunda da gizlenen/okunamayan süreçler bulunabilir.
+1. [Shizuku'yu kur ve başlat](https://shizuku.rikka.app/guide/setup/). Android 11+ için kablosuz hata ayıklama; eski Android sürümleri için bilgisayardan ADB kullanılabilir.
+2. Isı Dedektifi → **Süreçler → Shizuku ile yetkilendir ve ölç** düğmesine dokun, Shizuku izin isteğini onayla.
+3. CPU yüzdeleri için iki ölçüm bekle. CPU veya RAM sıralamasını değiştirebilirsin.
 
-Kullanım süreleri Android olay geçmişinden yaklaşık hesaplanır; çoklu pencere, üretici kayıt politikası ve eksik olaylar sonucu etkileyebilir. Arka plandaki işleri ölçmez. Termal sensör adları üreticiden gelir; hepsi CPU sensörü değildir. Sensörler Linux thermal-zone ABI'sinin milisantigrat birimiyle yorumlanır.
+Shizuku v11+ gerekir; güncel sürüm önerilir. SDK 13.1.5 kullanılır. Shizuku/Sui root ile başlatılmışsa root, ADB ile başlatılmışsa shell yetkileri kullanılır. Shizuku telefonu rootlamaz ve shell erişimi tam root yetkisi sağlamaz. Üreticinin erişime kapattığı sayaçlar erişilemiyor olarak gösterilir. Shizuku izni, kullanım geçmişi izninden ayrıdır.
 
-Uygulama telefonu rootlamaz, süreç öldürmez, otomatik “RAM temizliği” yapmaz. Yalnızca ön plandayken 5 saniyede bir örnek alır. İnternet izni, reklam, analiz SDK'sı ve arka plan servisi yoktur. Root izni sadece Süreçler sekmesindeki düğmeyle istenir; salt okunur sabit komutlar kullanılır. Paylaşılan rapor uygulama/süreç adlarını ve cihaz modelini içerebilir.
+Servis yalnızca kullanıcı bağlantı isteği verdikten sonra başlatılır. Uygulama arka plana geçince ölçüm servisi kaldırılır, ön plana dönünce istenen bağlantı yeniden kurulur. İzin reddi, servis ölümü ve bağlantı zaman aşımı ekranda gösterilir. Telefon yeniden başlatıldığında Shizuku'yu yeniden başlatmak gerekebilir. Root isteyenler için eski **Root izni iste ve ölç** seçeneği de bulunur.
 
-## Kurulum ve kullanım
+## Araçlar → Güncelleme
 
-1. Derlenen APK'yı Android telefonuna indirip aç. İstendiğinde dosyayı açtığın uygulamanın APK yükleme iznini etkinleştir.
-2. Genel sekmesinde sıcaklık/RAM durumunu incele.
-3. Uygulamalar sekmesinde kullanım erişimi düğmesiyle Android ayarlarından Isı Dedektifi'ne izin ver.
-4. Telefon **zaten rootluysa** Süreçler → Root izni iste ve ölç. Root yöneticisindeki isteği onayla; CPU için sonraki örneği bekle.
+**Güncellemeyi kontrol et ve indir** düğmesi GitHub'daki `downloads/update.json` ve APK'yı HTTPS ile alır. APK SHA-256 özeti, paket adı, sürümü ve kurulu uygulamanın imzası doğrulanır. Android'in APK yükleme izni ve kurulum onayı kullanıcı tarafından verilir; sessiz kurulum yapılmaz. İlk eski sürümde güncelleyici bulunmadığı için bu APK bir kez elle kurulmalıdır.
 
-APK debug anahtarıyla imzalanır; mağaza sürümü değildir. GitHub derlemeleri farklı geçici imza anahtarları kullanabilir; farklı derlemeye geçiş eski APK'nın kaldırılmasını gerektirebilir.
+İnternet izni yalnızca kullanıcı tarafından istenen güncelleme indirmesi içindir; cihaz ölçümleri sunucuya gönderilmez. Güncelleme dosyası sınırı 40 MiB, manifest sınırı 16 KiB'dir. İmza uyuşmazlığı, bozuk dosya ve eski sürüme dönüş reddedilir. Doğrudan indirilen APK'lar aynı yerel geliştirme anahtarıyla imzalanır. GitHub Actions geçici bir debug anahtarı üretir; Actions APK'sı ile doğrudan indirilen APK'nın imzaları farklı olabilir. Böyle bir kurulum güncelleyicide açık hata verir.
 
-## GitHub'da derleme
+## Araçlar → Android 16 masaüstü deneyimi
 
-Kaynakları depoya yüklediğinde `.github/workflows/android.yml` push üzerinde derler. GitHub → Actions → Android APK → başarılı çalıştırma → **Artifacts → Isi-Dedektifi-APK**. İndirilen ZIP içindeki `app-debug.apk` kurulabilir. Actions → Run workflow ile elle de başlatılabilir. İş akışı test, lint ve APK derlemesini çalıştırır. GitHub'a yükleme/çalıştırma için geçerli depo yazma yetkisi gerekir.
+Ekrandaki **Enable desktop experience features** için AOSP Android 16 karşılığı `global override_desktop_experience_features` ayarıdır. Araç mevcut değeri okur, kapatma istenirse eski değeri uygulamanın özel alanına yedekler, `0` yazar ve geri okuyarak doğrular. Eski değeri geri yükleme düğmesi de vardır. Yazma sadece Shizuku bağlantısıyla ve kullanıcı onayıyla yapılır. Android 16'dan eski sistemlerde bu işlev reddedilir.
 
-## Yerel derleme
+Yeniden başlatma otomatik yapılmaz. Samsung One UI 8.5 üretici politikası/özellik bayrakları bu seçeneği ayrıca kilitleyebilir. Ayarın `0` olması gerçek pencere davranışının kapandığını tek başına kanıtlamaz; yeniden başlatıp geliştirici seçeneklerinden ve harici ekran davranışından kontrol edilmelidir. Bu seçeneğin telefonun ısınmasına neden olduğu doğrulanmış değildir. [Araştırma, komutlar ve kaynaklar](DESKTOP-MODE.md).
 
-JDK 21, Gradle 8.13, Android SDK Platform 35 ve Build Tools 35.0.0 gerekir.
+## Ölçümlerin anlamı ve sınırları
+
+- Pil sıcaklığı CPU sıcaklığı değildir. Root/Shizuku ile okunabilen termal sensörler üreticinin adlarıyla gösterilir; hepsi CPU'ya ait değildir.
+- CPU yüzdesi tüm çekirdeklerin toplam kapasitesine göre normalize edilir. İlk örnekte yüzde üretilmez. PID tekrar kullanımı ve sayaç sıfırlanması eski örneği geçersiz kılar.
+- Süreç RAM'i RSS'dir; paylaşılan sayfalar tekrar sayılabilir. Uygulama toplamı veya PSS değildir. Bu uygulamanın kendi RAM'i ayrıca PSS olarak gösterilir. 4K/16K sayfa boyutu cihazdan okunur.
+- Shell kullanıcısının toplam CPU sayacına erişimi kapalıysa RAM verisi korunur ve CPU yüzdesi hesaplanmaz. Süreçler örnekleme sırasında kapanabilir. Süreç adı kısaltılabilir; bir uygulama birden fazla sürece sahip olabilir.
+- Binder yanıtı boyut sınırına ulaşılırsa süreç listesi eksik olarak işaretlenir. Ekranda sıralanmış ilk 80 süreç, paylaşım raporunda yakalanan tüm süreçler bulunur.
+- Kullanım geçmişi olay kayıtlarından yaklaşık ön plan süresidir; CPU/RAM ölçümü veya ısınma nedeni değildir. Çoklu pencere ve üretici kayıt politikası etkileyebilir. Dakikada bir yenilenir; arka plan işleri burada ölçülmez.
+
+Canlı ölçümler yalnızca ön planda, 5 saniyelik aralıklarla alınır. Süreç öldürme, otomatik RAM temizliği, sessiz güncelleme veya otomatik yeniden başlatma yoktur. Paylaşım raporu cihaz modelini ve uygulama/süreç adlarını içerebilir; Android paylaşım ekranından kullanıcı gönderir.
+
+## Derleme ve doğrulama
+
+JDK 21, Gradle 8.13, SDK Platform 35 ve Build Tools 35.0.0:
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk
@@ -40,10 +47,6 @@ bash scripts/test.sh
 gradle :app:lintDebug :app:assembleDebug
 ```
 
-Çıktı: `app/build/outputs/apk/debug/app-debug.apk`.
+Çıktı: `app/build/outputs/apk/debug/app-debug.apk`. Yönetilen bulut proxy/CA ayarları gerekiyorsa `python3 scripts/network-run.py <komut>` kullanılabilir. GitHub Actions aynı test/lint/APK adımlarını çalıştırır; sonuç **Artifacts → Isi-Dedektifi-APK** bölümündedir.
 
-Bu bulut ortamında Java araçları için mevcut proxy ve CA'yı kullanmak gerekirse `python3 scripts/network-run.py <komut>` kullanılabilir; kimlik bilgileri depoya yazılmaz.
-
-## Cihaz doğrulama listesi
-
-Gerçek telefonda test edilmesi gerekir: Android 8 ve 15'te açılış; kullanım erişiminin verilmesi/geri alınması; root olmayan cihazda düzgün hata; root izninin kabul/ret/zaman aşımı; 4K/16K sayfa boyutunda RSS; iki örnek arasında CPU; arka plana geçince örneklemenin durması; büyük yazı ve ekran döndürme; rapor paylaşımı. Telefon/emülatör bağlantısı olmadan bunlar doğrulanmış sayılmaz.
+46 kontrol: CPU/RSS ayrıştırma, PID tekrar kullanımı, 16K sayfalar, kısıtlı dosya erişimi, Binder çıktı sınırı, masaüstü ayarı komut sınırları, APK hash/paket/sürüm/imza politikaları. Derleme ve lint çalıştırılmıştır. Gerçek telefonda Shizuku izin/bağlantı yaşam döngüsü, Android kurulum ekranı ve Samsung masaüstü etkisi henüz doğrulanmamıştır.

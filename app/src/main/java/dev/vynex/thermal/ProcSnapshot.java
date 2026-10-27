@@ -9,8 +9,10 @@ public final class ProcSnapshot {
     public final long total, idle;
     public final Map<Integer, Entry> entries;
     public final List<String> temperatures;
-    private ProcSnapshot(long total, long idle, Map<Integer, Entry> entries, List<String> temperatures) {
+    public final boolean truncated;
+    private ProcSnapshot(long total, long idle, Map<Integer, Entry> entries, List<String> temperatures, boolean truncated) {
         this.total = total; this.idle = idle; this.entries = entries; this.temperatures = temperatures;
+        this.truncated=truncated;
     }
     public static ProcSnapshot parse(String text) {
         long total = -1, idle = 0, page = 4096;
@@ -20,8 +22,9 @@ public final class ProcSnapshot {
         for (String line : lines) if (line.startsWith("PAGE|")) {
             try { long n = Long.parseLong(line.substring(5).trim()); if (n > 0) page = n; } catch (NumberFormatException ignored) {}
         }
-        boolean thermal = false;
+        boolean thermal = false, truncated=false;
         for (String line : lines) {
+            if(line.equals("LIMIT|1")) {truncated=true;continue;}
             if (line.equals("__THERMAL__")) { thermal = true; continue; }
             if (line.startsWith("PAGE|")) continue;
             try {
@@ -55,7 +58,7 @@ public final class ProcSnapshot {
                 }
             } catch (NumberFormatException ignored) { /* exited or inaccessible process */ }
         }
-        return new ProcSnapshot(total, idle, entries, temperatures);
+        return new ProcSnapshot(total, idle, entries, temperatures, truncated);
     }
     public Double cpuSince(ProcSnapshot before) {
         if (before == null || total <= before.total || before.total < 0) return null;

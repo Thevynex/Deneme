@@ -1,10 +1,11 @@
-# APK
+# Isı Dedektifi 1.2 APK
 
-[Isı Dedektifi 1.0 APK indir](https://github.com/Thevynex/Deneme/raw/refs/heads/main/downloads/Isi-Dedektifi.apk)
+[APK indir](https://github.com/Thevynex/Deneme/raw/refs/heads/main/downloads/Isi-Dedektifi.apk)
 
-Android 8.0+. Bu dosya bulut çalışma alanında JDK 21, Gradle 8.13 ve Android SDK 35 ile derlenen debug imzalı APK'dır. GitHub Actions ayrıca aynı kaynakları derleyip çalıştırmanın Artifacts bölümüne APK yükler. Bu dosya GitHub Actions çıktısı olarak etiketlenmemiştir.
+Shizuku yetkilendirmesi, Araçlar sekmesinde kullanıcı onaylı güncelleme ve Android 16 masaüstü ayarını okuma/kapatma/geri yükleme eklendi. Önceki doğrudan indirilen 1.0 APK ile aynı debug anahtarı kullanıldı.
 
-Doğrulama: 14 sayaç ayrıştırma/hesaplama kontrolü başarılı; `:app:lintDebug :app:assembleDebug` başarılı (0 lint hatası, 3 uyarı); `apksigner verify` başarılı; AndroidManifest içinde internet izni yok. Bağlı Android cihaz/emülatör olmadığı için cihaz üzerinde çalışma doğrulanmadı. Ayrıntılı diğer-uygulama CPU/RAM görünümü root gerektirir; rootsuz kullanımda sistem RAM'i, pil sıcaklığı ve izinli kullanım geçmişi görüntülenir.
+46 kontrol, lint (0 hata) ve yerel APK derlemesi başarılı; APK imzası doğrulandı. Gerçek telefonda Shizuku, kurulum ve Samsung ayarının etkisi henüz sınanmadı. GitHub Actions çıktısı ayrı geçici anahtarla imzalanabilir; uygulama içi güncelleme böyle bir imza farkını reddeder.
 
-Kaynak commit: `6f1c220` (sonraki commitler yalnızca CI ve dağıtım dosyalarını değiştirir).
-SHA256: `16baf33008cde5160e75934483a881a21f9944a04a445127266c959539dde139`
+Bu APK yerel bulut çalışma alanında derlenmiştir; GitHub Actions ayrıca kaynakları derleyip artifact üretir.
+
+SHA256: `12b058e0c6b47385cc4051a297235788a02f09fc4d0606799274d96bfdef3aea`

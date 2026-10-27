@@ -27,7 +27,10 @@ public class MainActivity extends Activity {
     private boolean active, busy, rootEnabled, rootFirst, sortRam;
     private int tab;
     private String rootState = "Kapalı • isteğe bağlı", error = "";
+    private String updateStatus="Sürüm 1.2.0 • Güncellemeler GitHub'dan indirilir", desktopStatus="Henüz okunmadı";
     private ProcSnapshot previous;
+    private ShizukuClient shizuku;
+    private int measurementEpoch, previousEpoch=-1;
     private List<AppUse> cachedApps = new ArrayList<>();
     private long usageUpdated;
     private State state = new State();
@@ -42,6 +45,7 @@ public class MainActivity extends Activity {
         float temp = Float.NaN, battery = Float.NaN;
         int thermal = -1, voltageMv, currentMicroamps = Integer.MIN_VALUE;
         Double cpu;
+        String source="Standart", coverage="";
         List<ProcSnapshot.Row> processes = new ArrayList<>();
         List<String> sensors = new ArrayList<>();
         List<AppUse> apps = new ArrayList<>();
@@ -66,23 +70,31 @@ public class MainActivity extends Activity {
         scroll = new ScrollView(this); scroll.setFillViewport(true);
         body = column(); body.setPadding(0,dp(10),0,dp(24)); scroll.addView(body);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        setContentView(root); root.requestApplyInsets(); render();
+        setContentView(root); root.requestApplyInsets();
+        shizuku=new ShizukuClient(this,()->{
+            if(isDestroyed() || shizuku==null)return;
+            measurementEpoch++;clearProcessValues();render();
+            handler.post(()->{if(active && !busy && !isDestroyed())refresh(false);});
+        });
+        render();
     }
-    @Override protected void onResume() { super.onResume(); active=true; previous=null; refresh(false); }
-    @Override protected void onPause() { active=false; handler.removeCallbacks(poll); super.onPause(); }
-    @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onResume() { super.onResume(); active=true;measurementEpoch++;shizuku.foreground(true);refresh(false); }
+    @Override protected void onPause() { active=false;handler.removeCallbacks(poll);shizuku.foreground(false);super.onPause(); }
+    @Override protected void onDestroy() { shizuku.close();worker.shutdownNow();super.onDestroy(); }
     private void refresh(boolean enableRoot) {
         handler.removeCallbacks(poll);
         if (!active || busy) return;
-        if (enableRoot) { rootEnabled=true; rootFirst=true; rootState="Root izni bekleniyor…"; previous=null; }
+        if (enableRoot) { shizuku.disable();rootEnabled=true; rootFirst=true; rootState="Root izni bekleniyor…";measurementEpoch++; }
+        final int epoch=measurementEpoch;
         busy=true;
         worker.execute(() -> {
             State next;
             String problem="";
-            try { next=sample(); } catch (Exception e) { next=state; problem="Ölçüm alınamadı: " + e.getClass().getSimpleName(); }
+            try { next=sample(epoch); } catch (Exception e) { next=state; problem="Ölçüm alınamadı: " + e.getClass().getSimpleName(); }
             State result=next; String message=problem;
             handler.post(() -> {
                 busy=false; if (isDestroyed()) return;
+                if(epoch!=measurementEpoch) {if(active)refresh(false);return;}
                 state=result; error=message;
                 if (Float.isFinite(result.temp)) {
                     history.addLast(result.temp); while (history.size()>60) history.removeFirst();
@@ -91,7 +103,8 @@ public class MainActivity extends Activity {
             });
         });
     }
-    private State sample() throws Exception {
+    private State sample(int epoch) throws Exception {
+        if(previousEpoch!=epoch) {previous=null;previousEpoch=epoch;}
         State s = new State(); s.time=System.currentTimeMillis();
         ActivityManager am=(ActivityManager)getSystemService(ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo info=new ActivityManager.MemoryInfo(); am.getMemoryInfo(info);
@@ -117,12 +130,23 @@ public class MainActivity extends Activity {
             try {
                 ProcSnapshot snapshot=RootReader.read(rootFirst);
                 rootFirst=false; rootState="Açık • salt okunur ölçüm";
+                s.source="Root";
                 s.cpu=snapshot.cpuSince(previous); s.processes=snapshot.rowsSince(previous);
                 s.sensors=snapshot.temperatures; previous=snapshot;
             } catch (Exception e) {
                 rootEnabled=false; rootFirst=false; previous=null;
                 rootState="Erişilemedi • root yok, reddedildi veya süre aşıldı";
             }
+        } else if(shizuku.isReady()) {
+            try {
+                ProcSnapshot snapshot=shizuku.read();
+                s.source="Shizuku";
+                s.cpu=snapshot.cpuSince(previous);s.processes=snapshot.rowsSince(previous);
+                s.sensors=snapshot.temperatures;previous=snapshot;
+                s.coverage=(snapshot.total<0?"Toplam CPU sayacı shell kullanıcısına kapalı; süreç CPU yüzdeleri hesaplanamıyor. ":"")
+                    +(snapshot.entries.isEmpty()?"Cihaz süreç sayaçlarını shell kullanıcısına açmıyor. ":"")
+                    +(snapshot.truncated?"Süreç listesi aktarım sınırında kesildi; tüm süreçleri içermiyor.":"");
+            } catch(Exception e) {previous=null;}
         } else {
             // A few vendor ROMs permit this. Never substitute this app's CPU for device CPU.
             try (BufferedReader reader=new BufferedReader(new FileReader("/proc/stat"))) {
@@ -175,7 +199,7 @@ public class MainActivity extends Activity {
     }
     private void render() {
         tabBar.removeAllViews();
-        String[] names={"Genel","Uygulamalar","Süreçler"};
+        String[] names={"Genel","Uygulamalar","Süreçler","Araçlar"};
         for(int i=0;i<names.length;i++) {
             final int index=i;
             Button b=button(names[i],()->{tab=index;scroll.scrollTo(0,0);render();});
@@ -185,7 +209,7 @@ public class MainActivity extends Activity {
         body.removeAllViews();
         if(!error.isEmpty()) body.addView(text(error,14,Color.rgb(255,160,120)));
         if(state.time==0) {body.addView(text("İlk ölçüm alınıyor…",18,MUTED));return;}
-        if(tab==0) overview(); else if(tab==1) apps(); else processes();
+        if(tab==0) overview(); else if(tab==1) apps(); else if(tab==2)processes();else tools();
         TextView time=text("Son ölçüm: " + new java.text.SimpleDateFormat("HH:mm:ss",new Locale("tr")).format(new Date(state.time))+" · 5 sn aralık",12,MUTED);
         time.setPadding(0,dp(16),0,dp(6)); body.addView(time);
     }
@@ -209,14 +233,14 @@ public class MainActivity extends Activity {
         tips.addView(button("Android pil kullanımını aç",()->open(new Intent(Intent.ACTION_POWER_USAGE_SUMMARY))));
         tips.addView(button("Ölçüm raporunu paylaş",this::share));
         if(!state.sensors.isEmpty()) {
-            LinearLayout c=card("CİHAZIN TERMAL SENSÖRLERİ · ROOT");
+            LinearLayout c=card("CİHAZIN TERMAL SENSÖRLERİ · "+state.source);
             c.addView(text("Üretici sensör adlarıdır; her sensör CPU'ya ait değildir.",13,MUTED));
             for(String sensor:state.sensors) c.addView(text(sensor,14,TEXT));
         }
     }
     private void apps() {
         LinearLayout intro=card("SON 24 SAAT · ÖN PLAN KULLANIMI");
-        intro.addView(text("Kullanım süresi, CPU/RAM tüketimi veya ısınmanın nedeni değildir. Rootsuz Android diğer uygulamaların canlı CPU/RAM verisini paylaşmaz. Arka plan işleri bu listede ölçülmez.",14,MUTED));
+        intro.addView(text("Kullanım süresi, CPU/RAM tüketimi veya ısınmanın nedeni değildir. Canlı süreç verileri için Süreçler sekmesinde Shizuku veya root yetkisi ver. Arka plan işleri bu kullanım listesinde ölçülmez.",14,MUTED));
         intro.addView(button(state.usageAccess?"Kullanım erişimini yönet":"Kullanım erişimine izin ver",()->open(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))));
         if(!state.usageAccess) {intro.addView(text("Açılan listede Isı Dedektifi'ni seçip kullanım erişimini etkinleştir.",15,TEXT));return;}
         intro.addView(text("Olay kayıtlarından yaklaşık süre; dakikada bir yenilenir. Üretici kayıtları ve çoklu pencere sonucu etkileyebilir.",12,MUTED));
@@ -228,12 +252,21 @@ public class MainActivity extends Activity {
         }
     }
     private void processes() {
-        LinearLayout intro=card("CANLI CPU / RAM · İSTEĞE BAĞLI ROOT");
-        intro.addView(text("Durum: "+rootState,14,GREEN));
-        intro.addView(text("Root mevcutsa, izin verdiğinde salt okunur /proc ölçümü yapılır. Bu uygulama telefonu rootlamaz. Süreç adı kısaltılmış olabilir; bir uygulamanın birden fazla süreci olabilir. RAM: RSS (paylaşılan sayfalar dahil), uygulama toplamı değildir.",14,MUTED));
+        LinearLayout intro=card("CANLI CPU / RAM · SHIZUKU VEYA ROOT");
+        intro.addView(text("Shizuku: "+shizuku.status(),14,GREEN));
+        intro.addView(button("Shizuku ile yetkilendir ve ölç",()->{
+            if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+            rootEnabled=false;rootState="Kapalı • isteğe bağlı";measurementEpoch++;clearProcessValues();shizuku.request();
+        }));
+        if(shizuku.isWanted())intro.addView(button("Shizuku ölçümünü kapat",shizuku::disable));
+        intro.addView(text("1. Shizuku'yu kur ve başlat (Android 11+: kablosuz hata ayıklama; eski Android: bilgisayardan ADB).\n2. Yukarıdaki düğmeye dokunup Shizuku izin isteğini onayla.\n3. CPU için iki ölçümün alınmasını bekle. Yeniden başlatma sonrası Shizuku'yu tekrar başlatman gerekebilir.",14,MUTED));
+        intro.addView(button("Shizuku kurulum rehberi",()->open(new Intent(Intent.ACTION_VIEW,Uri.parse("https://shizuku.rikka.app/guide/setup/")))));
+        intro.addView(text("Shizuku'nun shell yetkisi cihazın izin verdiği süreçleri/sensörleri okur; tam root erişimi sağlamaz. İşlemler salt okunurdur. Süreç adı kısaltılmış olabilir. RAM: RSS (paylaşılan sayfalar dahil), uygulama toplamı değildir.",14,MUTED));
+        intro.addView(text("Root: "+rootState+" • Veri kaynağı: "+state.source,13,MUTED));
+        if(!state.coverage.isEmpty())intro.addView(text(state.coverage,14,MUTED));
         if(rootEnabled) intro.addView(button("Root ölçümünü kapat",()->{
             if(busy) {Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
-            rootEnabled=false;rootState="Kapalı • isteğe bağlı";previous=null;state.processes.clear();state.sensors.clear();state.cpu=null;render();
+            rootEnabled=false;rootState="Kapalı • isteğe bağlı";measurementEpoch++;clearProcessValues();render();refresh(false);
         }));
         else intro.addView(button("Root izni iste ve ölç",()->{
             if(busy) {Toast.makeText(this,"Ölçüm sürüyor, birazdan tekrar dene",Toast.LENGTH_SHORT).show();return;}
@@ -241,7 +274,7 @@ public class MainActivity extends Activity {
                 .setMessage("Yalnızca süreç sayaçları ve termal sensörler okunacak. Root yöneticin varsa izin penceresi açılabilir. Sistem ayarları değiştirilmeyecek.")
                 .setNegativeButton("Vazgeç",null).setPositiveButton("Ölç",(d,w)->{refresh(true);render();}).show();
         }));
-        if(state.processes.isEmpty()) {intro.addView(text("Rootsuz kullanımda diğer uygulamaların CPU ve RAM değerleri erişilemez. Kullanım geçmişi için Uygulamalar sekmesini aç.",15,TEXT));return;}
+        if(state.processes.isEmpty()) {intro.addView(text("Henüz okunabilir süreç verisi yok. Shizuku veya root ile yetkilendir; cihazın izin verdiği veriler sonraki ölçümde görünür.",15,TEXT));return;}
         intro.addView(button(sortRam?"Sıralama: RAM ↓ • CPU için dokun":"Sıralama: CPU ↓ • RAM için dokun",()->{sortRam=!sortRam;render();}));
         intro.addView(text("CPU: tüm çekirdekler toplamında %; ilk örnekte —. Süreçler eşzamanlı okunmadığından küçük ölçüm sapmaları olabilir.",12,MUTED));
         List<ProcSnapshot.Row> rows=new ArrayList<>(state.processes);
@@ -258,14 +291,14 @@ public class MainActivity extends Activity {
         body.addView(button("Tüm süreçleri raporla paylaş",this::share));
     }
     private void share() {
-        StringBuilder s=new StringBuilder("Isı Dedektifi 1.0\n");
+        StringBuilder s=new StringBuilder("Isı Dedektifi 1.2\n");
         s.append("Cihaz: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(" · Android ").append(Build.VERSION.RELEASE).append('\n');
         s.append("Ölçüm: ").append(new Date(state.time)).append('\n');
         s.append("Pil sıcaklığı (CPU değil): ").append(Float.isFinite(state.temp)?state.temp+" °C":"erişilemiyor").append('\n');
         s.append("Termal durum: ").append(thermal(state.thermal)).append('\n');
         s.append("Sistem RAM kullanımı: ").append(bytes(state.totalRam-state.availableRam)).append(" / ").append(bytes(state.totalRam)).append('\n');
         s.append("Toplam CPU: ").append(state.cpu==null?"erişilemiyor / örnek bekleniyor":percent(state.cpu)).append('\n');
-        s.append("Root: ").append(rootState).append("\nSüreçler: CPU toplam kapasite %, RAM RSS; paylaşılan RAM tekrar sayılabilir.\n");
+        s.append("Veri kaynağı: ").append(state.source).append("\nShizuku: ").append(shizuku.status()).append("\nRoot: ").append(rootState).append('\n').append(state.coverage).append("\nSüreçler: CPU toplam kapasite %, RAM RSS; paylaşılan RAM tekrar sayılabilir.\n");
         for(ProcSnapshot.Row r:state.processes) s.append(r.entry().pid()).append(' ').append(r.entry().name()).append(" CPU ").append(r.cpu()==null?"—":percent(r.cpu())).append(" RSS ").append(bytes(r.entry().rssBytes())).append('\n');
         for(String sensor:state.sensors) s.append(sensor).append('\n');
         s.append("\n24 saatlik yaklaşık ön plan kullanımı (CPU/RAM ölçümü değildir):\n");
@@ -275,6 +308,74 @@ public class MainActivity extends Activity {
             .setNegativeButton("Vazgeç",null).setPositiveButton("Devam",(d,w)->open(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,s.toString()),"Ölçüm raporu"))).show();
     }
     private void appInfo(String pkg) {open(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+pkg)));}
+    private void tools() {
+        LinearLayout update=card("UYGULAMA GÜNCELLEMELERİ");
+        update.addView(text(updateStatus,15,TEXT));
+        update.addView(text("Düğmeye dokununca GitHub'a bağlanır. APK'nın SHA-256 özeti, paket adı, sürümü ve kurulu uygulamayla imzası doğrulanır. Kurulumu Android ekranında sen onaylarsın.",13,MUTED));
+        update.addView(button("Güncellemeyi kontrol et ve indir",this::updateApp));
+        update.addView(button("APK yükleme iznini aç",()->open(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+getPackageName())))));
+        LinearLayout desktop=card("ANDROID 16 · MASAÜSTÜ DENEYİMİ");
+        desktop.addView(text(desktopStatus,14,GREEN));
+        desktop.addView(text("Enable desktop experience features seçeneğinin AOSP karşılığı: global "+DesktopSetting.KEY+". 0: kapalı, 1: açık, -1/atanmamış: varsayılan. Samsung bunu ayrıca kilitleyebilir. Ayarın yazılması gerçek masaüstü davranışının kapandığını tek başına kanıtlamaz; yeniden başlatıp sistem ayarından kontrol et.",13,MUTED));
+        desktop.addView(text("Shizuku ile yetkilendirmek için Süreçler sekmesini kullan. Değişiklik yalnızca bu ayara uygulanır; yeniden başlatma otomatik yapılmaz.",13,MUTED));
+        desktop.addView(button("Mevcut değeri oku",()->desktopAction(0)));
+        desktop.addView(button("Shizuku ile masaüstü deneyimini kapat",()->new AlertDialog.Builder(this)
+            .setTitle("Masaüstü deneyimini kapat")
+            .setMessage("Mevcut değer yedeklenecek ve yalnızca masaüstü deneyimi ayarına 0 yazılacak. Harici ekran/pencere davranışı etkilenebilir. Sonrasında telefonu kendin yeniden başlatıp sonucu kontrol et.")
+            .setNegativeButton("Vazgeç",null).setPositiveButton("Kapat",(d,w)->desktopAction(1)).show()));
+        if(getSharedPreferences("desktop",MODE_PRIVATE).contains("original"))desktop.addView(button("Yedeklenen eski değeri geri yükle",()->new AlertDialog.Builder(this)
+            .setTitle("Eski değeri geri yükle").setMessage("Bu uygulamayla yapılan ilk kapatma işleminden önceki değer geri yüklenecek. Yeniden başlatma gerekebilir.")
+            .setNegativeButton("Vazgeç",null).setPositiveButton("Geri yükle",(d,w)->desktopAction(2)).show()));
+    }
+    private void updateApp() {
+        if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+        busy=true;handler.removeCallbacks(poll);updateStatus="Güncelleme kontrol ediliyor / indiriliyor…";render();
+        worker.execute(()->{
+            File file=null;String message;
+            try {file=UpdateManager.download(this);message=file==null?"Zaten en güncel sürümdesin.":"Güncelleme doğrulandı. Kurulumu Android ekranında onayla.";}
+            catch(Exception e){message="Güncelleme alınamadı: "+e.getMessage();}
+            File apk=file;String result=message;
+            handler.post(()->{
+                busy=false;if(isDestroyed())return;updateStatus=result;render();
+                if(apk!=null && active) {
+                    if(!getPackageManager().canRequestPackageInstalls()) {
+                        updateStatus="APK doğrulandı. APK yükleme iznini açıp güncelleme düğmesine tekrar dokun.";render();
+                        open(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+getPackageName())));
+                    } else {
+                        Uri uri=Uri.parse("content://"+getPackageName()+".updates/apk");
+                        Intent install=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        install.setClipData(ClipData.newRawUri("APK",uri));open(install);
+                    }
+                }
+                if(active)handler.postDelayed(poll,5000);
+            });
+        });
+    }
+    private void desktopAction(int action) {
+        if(busy){Toast.makeText(this,"Ölçüm tamamlanınca tekrar dene",Toast.LENGTH_SHORT).show();return;}
+        if(!shizuku.isReady()){desktopStatus="Önce Süreçler → Shizuku ile yetkilendir ve ölç";render();return;}
+        busy=true;handler.removeCallbacks(poll);desktopStatus="Ayar okunuyor…";render();
+        worker.execute(()->{
+            String result;
+            try {
+                String before=DesktopSetting.valid(shizuku.readDesktopSetting());
+                SharedPreferences prefs=getSharedPreferences("desktop",MODE_PRIVATE);
+                if(action==1) {
+                    if(!prefs.contains("original") && !prefs.edit().putString("original",before).commit())throw new IOException("Eski değer yedeklenemedi; ayar değiştirilmedi");
+                    shizuku.writeDesktopSetting("0");
+                } else if(action==2) {
+                    if(!prefs.contains("original"))throw new IOException("Yedeklenen eski değer yok");
+                    shizuku.writeDesktopSetting(DesktopSetting.valid(prefs.getString("original","null")));
+                    prefs.edit().remove("original").commit();
+                }
+                String after=shizuku.readDesktopSetting();
+                result="Okunan değer: "+after+(action!=0?" • Değer yazıldı ve geri okundu. Telefonu yeniden başlatıp seçeneği kontrol et.":" • Yalnızca okundu; değişiklik yapılmadı.");
+            } catch(Exception e){result="İşlem doğrulanamadı: "+e.getMessage();}
+            String message=result;
+            handler.post(()->{busy=false;if(isDestroyed())return;desktopStatus=message;render();if(active)handler.postDelayed(poll,5000);});
+        });
+    }
+    private void clearProcessValues() {state.processes=new ArrayList<>();state.sensors=new ArrayList<>();state.cpu=null;state.source="Standart";state.coverage="";}
     private void open(Intent intent) {try {startActivity(intent);}catch(ActivityNotFoundException|SecurityException e){Toast.makeText(this,"Bu ekran cihazda açılamıyor",Toast.LENGTH_LONG).show();}}
     private void metric(String label,String value,String note) {LinearLayout c=card(label);c.addView(text(value,24,TEXT));c.addView(text(note,13,MUTED));}
     private LinearLayout card(String title) {
